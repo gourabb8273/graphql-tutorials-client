@@ -1,6 +1,7 @@
 import "./App.css";
 import { useQuery } from '@apollo/client/react';
-import {  gql } from '@apollo/client';
+import {  gql, useSubscription } from '@apollo/client';
+import { useEffect, useState } from "react";
 const GET_TODOS = gql`
   query {
     getTodos {
@@ -16,8 +17,44 @@ const GET_TODOS = gql`
   }
 `;
 
+const TODO_ADDED = gql`
+  subscription {
+    todoAdded {
+      id
+      title
+      completed
+      user {
+        name
+        email
+        phone
+      }
+    }
+  }
+`;
+
 export default function App() {
   const { data, loading, error } = useQuery(GET_TODOS);
+  const { data: subData } = useSubscription(TODO_ADDED);
+
+  const [todos, setTodos] = useState([]);
+
+  // When query data arrives initially
+  useEffect(() => {
+    if (data?.getTodos) {
+      setTodos(data.getTodos);
+    }
+  }, [data]);
+
+  // When a new todo comes via subscription
+  useEffect(() => {
+    if (subData?.todoAdded) {
+      setTodos((prev) => {
+        // avoid duplicates
+        if (prev.some((t) => t.id === subData.todoAdded.id)) return prev;
+        return [subData.todoAdded, ...prev];
+      });
+    }
+  }, [subData]);
 
   if (loading) return <p style={{ textAlign: "center", marginTop: "2rem" }}>⏳ Loading todos...</p>;
   if (error) return <p style={{ color: "red", textAlign: "center" }}>❌ Error: {error.message}</p>;
@@ -26,28 +63,37 @@ export default function App() {
     <div style={styles.container}>
       <h1 style={styles.header}>📋 Todo List</h1>
       <div style={styles.grid}>
-        {data.getTodos.map((todo, index) => (
-          <div key={index} style={styles.card}>
+        {todos.map((todo) => (
+          <div key={todo.id} style={styles.card}>
             <h2 style={styles.title}>
               {todo.title}
-              {todo.completed ? (
-                <span style={{ ...styles.badge, backgroundColor: "#16a34a" }}>Done</span>
-              ) : (
-                <span style={{ ...styles.badge, backgroundColor: "#dc2626" }}>Pending</span>
-              )}
+              <span
+                style={{
+                  ...styles.badge,
+                  backgroundColor: todo.completed ? "#16a34a" : "#dc2626",
+                }}
+              >
+                {todo.completed ? "Done" : "Pending"}
+              </span>
             </h2>
-
-            <div style={styles.userSection}>
-              <p><strong>👤 {todo.user.name}</strong></p>
-              <p style={styles.detail}>📧 {todo.user.email}</p>
-              <p style={styles.detail}>📞 {todo.user.phone}</p>
-            </div>
+            {todo.user ? (
+              <div style={styles.userSection}>
+                <p>
+                  <strong>👤 {todo.user.name}</strong>
+                </p>
+                <p style={styles.detail}>📧 {todo.user.email}</p>
+                {todo.user.phone && <p style={styles.detail}>📞 {todo.user.phone}</p>}
+              </div>
+            ) : (
+              <p style={{ color: "#64748b", fontStyle: "italic" }}>No user info available</p>
+            )}
           </div>
         ))}
       </div>
     </div>
   );
 }
+
 
 const styles = {
   container: {
